@@ -1,0 +1,67 @@
+# - name: Find files -  {{ item.name }}
+#   ansible.builtin.find:
+#     paths: "{{ filletree_output_path }}"
+#     file_type: file
+#     use_regex: true
+#     patterns: "{{ item.file_pattern }}"
+#     recurse: true
+#   register: __list_files
+
+- name: Find files -  {{ item.name }}
+  ansible.builtin.command: "find {{ filletree_output_path }} -type f -wholename {{ item.file_pattern }}"
+  register: __list_files
+  changed_when: false
+
+- name: Read files -  {{ item.name }}
+  ansible.builtin.include_vars:
+    file: "{{ __read_file }}"
+  loop: "{{ __list_files.stdout_lines }}"
+  loop_control:
+    loop_var: __read_file
+  register: __contents
+
+# - name: Read files -  {{ item.name }}
+#   ansible.builtin.include_vars:
+#     file: "{{ __read_file.path }}"
+#   loop: "{{ __list_files.files }}"
+#   loop_control:
+#     loop_var: __read_file
+#     label: "{{ __read_file.path }}"
+#   register: __contents
+
+- name: Reset cache -  {{ item.name }}
+  ansible.builtin.set_fact:
+    ___cache: []
+
+- name: Concatenate and cache -  {{ item.name }}
+  ansible.builtin.set_fact:
+    ___cache: "{{ (___cache | default([])) + ___cache_item.ansible_facts[item.fact_name] }}"
+  loop: "{{ __contents.results }}"
+  loop_control:
+    loop_var: ___cache_item
+    label: "{{ ___cache_item.ansible_included_var_files }}"
+  when:
+    - __contents.results is defined
+    - ___cache_item.ansible_facts[item.fact_name] is defined
+    - ___cache_item.ansible_facts[item.fact_name] is iterable
+
+- name: Persistence block
+  when: ___cache | length > 0
+  block:
+    - name: Persist cache (env scoped) -  {{ item.name }}
+      ansible.builtin.copy:
+        content:  |
+          {{ item.fact_name }}:
+          {{  ___cache | to_nice_yaml }}
+        dest: "{{ dir_orgs_vars }}/{{ orgs }}/env/{{ env }}/controller_{{ item.name }}.d/all_{{ item.name }}.yml"
+        mode: 0640
+      when: item.env_scoped is true
+
+    - name: Persist cache (non env scoped) -  {{ item.name }}
+      ansible.builtin.copy:
+        content: |
+          {{ item.fact_name }}:
+          {{ ___cache | to_nice_yaml }}
+        dest: "{{ dir_orgs_vars }}/{{ orgs }}/env/common/controller_{{ item.name }}.d/all_{{ item.name }}.yml"
+        mode: 0640
+      when: item.env_scoped is false

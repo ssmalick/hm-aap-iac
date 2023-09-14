@@ -1,0 +1,9 @@
+---
+collections:
+  - name: infra.controller_configuration
+    #version: 2.2.4
+    version: 2.5.1
+  - name: awx.awx  
+  - name: ./collections/ansible-controller-4.4.0.tar.gz
+    type: file
+

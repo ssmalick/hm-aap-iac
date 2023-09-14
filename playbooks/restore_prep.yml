@@ -1,0 +1,73 @@
+---
+- name: Create and prepare exported AAP resources for restore
+  hosts: all
+  connection: local
+  gather_facts: false
+  vars:
+    filletree_output_path: /tmp/rhapp_filetree_output
+    dir_orgs_vars: __dir_orgs_vars
+    orgs: orgs
+    env: dev
+    aap_resources:
+      - { name: settings, env_scoped: true, file_pattern: '**/current_settings.yaml', fact_name: controller_settings }
+      - { name: organizations, env_scoped: false, file_pattern: '**/current_organization.yaml', fact_name: controller_organizations }
+      - { name: labels, env_scoped: false, file_pattern: '**/current_labels.yaml', fact_name: controller_labels }
+      - { name: users, env_scoped: true, file_pattern: '**/users/*.yaml', fact_name: controller_user_accounts }
+      - { name: teams, env_scoped: false, file_pattern: '**/teams/*.yaml', fact_name: controller_teams }
+      - { name: credential_types, env_scoped: false, file_pattern: '**/current_credential_types.yaml', fact_name: controller_credential_types }
+      - { name: credentials, env_scoped: true, file_pattern: '**/credentials/*.yaml', fact_name: controller_credentials }
+      # TODO: Handle this
+      # - { name: credential_input_sources, env_scoped: false, file_pattern: current_settings.yaml, fact_name: controller_credential_input_sources }
+      - { name: notification_templates, env_scoped: false, file_pattern: '**/notification_templates/*.yaml', fact_name: controller_notification_templates }
+      - { name: projects, env_scoped: false, file_pattern: '**/projects/*.yaml', fact_name: controller_projects }
+      - { name: execution_environments, env_scoped: true, file_pattern: '**/current_execution_environments.yaml', fact_name: controller_execution_environments }
+      - { name: applications, env_scoped: false, file_pattern: '**/applications/*.yaml', fact_name: controller_applications }
+      - { name: inventories, env_scoped: false, file_pattern: '**/inventories/*/[0-9]*_*.yaml', fact_name: controller_inventories }
+      - { name: inventory_sources, env_scoped: true, file_pattern: '**/current_inventory_sources.yaml', fact_name: controller_inventory_sources }
+      - { name: instance_groups, env_scoped: true, file_pattern: '**/current_instance_groups.yaml', fact_name: controller_instance_groups }
+      - { name: hosts, env_scoped: true, file_pattern: '**/inventories/*/current_hosts.yaml', fact_name: controller_hosts }
+      - { name: groups, env_scoped: false, file_pattern: '**/inventories/*/current_groups.yaml', fact_name: controller_groups }
+      - { name: job_templates, env_scoped: false, file_pattern: '**/job_templates/*.yaml', fact_name: controller_templates }
+      - { name: workflow_job_templates, env_scoped: false, file_pattern: '**/workflow_job_templates/*.yaml', fact_name: controller_workflows }
+      - { name: schedules, env_scoped: false, file_pattern: '**schedules/*.yaml', fact_name: controller_schedules }
+      - { name: roles, env_scoped: false, file_pattern: '**/current_roles_*.yaml', fact_name: controller_roles }
+
+  tasks:
+    - name: Delete output dir
+      ansible.builtin.file:
+        path: "{{ dir_orgs_vars }}"
+        state: absent
+
+    - name: Create output dir
+      ansible.builtin.file:
+        path: "{{ dir_orgs_vars }}"
+        state: directory
+        mode: "0755"
+
+    - name: Create env scopped resources folder
+      ansible.builtin.file:
+        path: "{{ dir_orgs_vars }}/{{ orgs }}/env/{{ env }}/controller_{{ item.name }}.d"
+        state: directory
+        mode: "0755"
+      loop: "{{ aap_resources | selectattr('env_scoped', 'equalto', true) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Create non env scopped resources folder
+      ansible.builtin.file:
+        path: "{{ dir_orgs_vars }}/{{ orgs }}/env/common/controller_{{ item.name }}.d"
+        state: directory
+        mode: "0755"
+      loop: "{{ aap_resources | selectattr('env_scoped', 'equalto', false) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Process AAP resources
+      ansible.builtin.include_tasks: copy_aap_resources_tasks.yml
+      loop: "{{ aap_resources }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Remove empty folders
+      ansible.builtin.command: "find {{ dir_orgs_vars }} -type d -empty -delete"
+      changed_when: false
